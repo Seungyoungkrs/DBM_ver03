@@ -4,7 +4,9 @@ AOE2 대상으로 하는 DBM 예측 코드의 GIT 버전
 ## 1. 프로젝트 개요
 
 함정에 부착된 Strain Gauge 데이터를 기반 으로 함정 선체 응답을 예측할 수 있도록 전선구조해석 결과를 기반으로 선체 구조 전체의 응력 및 변위를 예측하는 DBM(또는 WMSR) 예측 방법에 대한 스크립트입니다. 
-* WMSR : Wave induced Mode based Strain to Responce
+
+* DBM : Distortion Mode Based Method
+* WMSR : Wave induced Mode based Strain to Response (DBM과 WMSR 두 용어는 동일한 해석 방법을 지칭합니다.)
 
 ## 2. 필수 폴더 및 파일 구조
 
@@ -43,9 +45,9 @@ project_root/
 
 -   **HYDRODYNAMIC (full/min).OUT**: 대상 함정에 대한 유체동역학 해석 결과 데이터 (모든 LC : 대상함에 경우에는 Full/Min)
 -   **AOE_II_model.bdf**: 전체 FE 모델
--   **ref_with_shell_o1deck.bdf**: 응력을 예측할 대상 요소에 대한 bdf 파일 (반드시 전체 FE 모델에서 추출한 모델이어야 함 : ID가 완전히 같아야 함)
--   **AOE2_DBM_* (REAL/IMAG).op2**: 전선구조해석 결과 중 REAL/IMAG 파일 (모든 )
--   **Analysis_static_*.op2**: 정적 해석 결과
+-   **ref_with_shell_o1deck.bdf**: 응력을 예측할 대상 요소에 대한 bdf 파일 (반드시 전체 FE 모델에서 추출한 모델이어야하며, 요소 및 노드 ID가 완전히 같아야 함)
+-   **AOE2_DBM_* (REAL/IMAG).op2**: 모든 요소에 대한 전선구조해석 결과 중 REAL/IMAG 결과 (모든 LC, HA, Freq에 대한 것으로 스펙트럴 피로해석과 동일한 Case임)
+-   **Analysis_static_*.op2**: 모든 요소에 대한 스태틱(Full/Min) 해석 결과 
 -   **sensor_input_elem/sensor_input_XXX.txt**: 사용할 센서의 요소 ID 목록. 현재 `p00_config.py`에 `006`으로 설정되어 있습니다.
 
 ## 3. 실행 방법
