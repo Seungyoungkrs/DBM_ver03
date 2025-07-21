@@ -9,13 +9,13 @@ AOE2 대상으로 하는 DBM 예측 코드의 GIT 버전
 ## 2. 필수 폴더 및 파일 구조
 
 스크립트를 정상적으로 실행하기 위해서는 아래와 같은 폴더 및 파일 구조를 반드시 준수해야 합니다. **프로젝트 폴더**와 **입력 데이터 폴더(`AOE2_input`)**는 동일한 위치에 있어야 합니다.
-
+```
 project_root/
 │
-├── 📂 AOE2_input/  <-- 모든 원본 입력 데이터가 위치하는 폴더
+├── 📂 AOE2_input/
 │   │
 │   ├── 📂 sensor_input_elem/
-│   │   └── 📄 sensor_input_006.txt  (사용할 센서 조합 파일)
+│   │   └── 📄 sensor_input_006.txt
 │   │
 │   ├── 📄 HYDRODYNAMIC_full.OUT
 │   ├── 📄 HYDRODYNAMIC_min.OUT
@@ -28,16 +28,16 @@ project_root/
 │   ├── 📄 Analysis_static_full.op2
 │   └── 📄 Analysis_static_min.op2
 │
-└── 📂 DBM_Project/  <-- main.py가 위치한 프로젝트 폴더
+└── 📂 DBM_Project/
 │
 ├── 📄 main.py
 ├── 📂 module/
 │   ├── 📄 p00_config.py
 │   └── ... (p01, p02 등 다른 모듈 파일들)
 │
-└── 📂 Output/          <-- (결과물이 자동으로 생성되는 폴더)
+└── 📂 Output/
 └── 📂 pkl/
-
+```
 
 ### 필수 입력 파일 목록
 
