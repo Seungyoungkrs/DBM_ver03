@@ -68,3 +68,8 @@ project_root/
     -   `True`: 기존에 생성된 모드 데이터(`optimization_variables.pkl`)를 로드하여 사용합니다. (시간 절약)
     -   `False`: Hydrodynamic 데이터로부터 새로운 모드 데이터를 계산합니다. (최초 실행 시 또는 조건 변경 시)
 -   **`sensors`**: `_load_sensor_ids` 메서드 내에서 센서 파일을 찾지 못했을 경우 사용할 기본 센서 ID 목록을 직접 수정할 수 있습니다.
+
+## 5. 결과 파일 관련
+
+결과 파일 용량이 매우 방대한 관계(전체 결과 : 150GB, 참조 요소 결과 : 10GB)로 sylee82@krs.co.kr로 요청하시면 별도로 송부드립니다.
+
