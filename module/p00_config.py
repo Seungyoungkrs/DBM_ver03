@@ -88,13 +88,13 @@ class Config:
             
             # --- 실행 제어 플래그 ---
             # True: 기존 pkl 데이터 로드, False: 원본 데이터부터 새로 계산/생성
-            'new_mode_data': True,      # 모드 데이터 (P01, P02)
-            'new_result_data': True,    # 해석 결과 데이터 (P04)
+            'new_mode_data': True,      # 모드 데이터 새로 생성 여부
+            'new_result_data': True,    # 결과 데이터 새로 생성 여부
             
             # --- (현재 사용 안 함) 레거시 또는 향후 사용될 플래그 ---
-            'new_load_op2': True,       # OP2 파일 로드 방식 제어
-            'new_ref_data': True,       # Reference 데이터 로드 방식 제어
-            'new_sen_data': True,       # 센서 데이터 로드 방식 제어
+            'new_load_op2': True,       # OP2 파일로 부터 새로 결과를 받을 것인지 여부 (OP2 파일로 부터 결과 추출 시 시간 및 여유 메모리 고려 필수)
+            'new_ref_data': True,       # 기존 참조 데이터 로드 or 신규 참조 데이터 생성
+            'new_sen_data': True,       # 기존 센서 데이터 로드 or 신규 센서서 데이터 생성
             'export_ppt': False,        # PPT 결과물 생성 여부
         }
 

@@ -3,12 +3,10 @@ import numpy as np
 import os
 import pickle
 import time
+import logging
 from datetime import datetime
 from pyNastran.op2.op2 import read_op2
-from pyNastran.op2.op2 import OP2
-from module.p00_config import  get_configuration
-from tqdm import tqdm
-from collections import defaultdict
+
 
 class ModeGroup:
     """
@@ -62,7 +60,7 @@ class ModeData:
         try:
             return config_list.index(value)
         except ValueError:
-            print(f"Value {value} not found in config list: {config_list}")
+            logging.warning(f"P04: Value {value} not found in config list: {config_list}")
             return -1  # 값이 없을 경우 -1 반환
         
     @staticmethod
@@ -73,29 +71,28 @@ class ModeData:
         for line in data_list:
             parts = line.split('/')  # '/'로 구분하여 데이터 분리
             if len(parts) < 4:  # 최소 4개 값이 있는지 확인 (head/freq/phase/LC_name)
-                print(f"Invalid data format: {line}")
+                logging.warning(f"P04: Invalid data format, skipping line: {line}")
                 continue
-
             try:
-                head = int(parts[0])  # 헤드 값
-                freq = float(parts[1])  # 주파수 값
-#                 phase_value = int(parts[2]) / 16.0  # 위상 값 
+                head = int(parts[0])  
+                freq = float(parts[1])  
                 phase_value = int(parts[2]) / config['nPhase']
-                LC_name = parts[3]  # LC 이름
-            except ValueError as e:
-                print(f"Data parsing error: {line}, Error: {e}")
-                continue
+                LC_name = parts[3]  
 
-            mode_data.head.append(head)
-            mode_data.freq.append(freq)
-            mode_data.phase.append(phase_value)
-            mode_data.LC_name.append(LC_name)
- 
-            # head_index와 freq_index 계산
-            head_index = mode_data.convert_to_index(head, config['ha'])
-            freq_index = mode_data.convert_to_index(freq, config['freq'])
-            mode_data.head_index.append(head_index)
-            mode_data.freq_index.append(freq_index)
+                mode_data.head.append(head)
+                mode_data.freq.append(freq)
+                mode_data.phase.append(phase_value)
+                mode_data.LC_name.append(LC_name)
+    
+                # head_index와 freq_index 계산
+                head_index = mode_data.convert_to_index(head, config['ha'])
+                freq_index = mode_data.convert_to_index(freq, config['freq'])
+                mode_data.head_index.append(head_index)
+                mode_data.freq_index.append(freq_index)
+
+            except ValueError as e:
+                logging.error(f"P04: Data parsing error for line '{line}': {e}")
+                continue
             
             # LC_name별로 데이터 그룹화 (ModeGroup 객체 사용)
             if LC_name not in mode_data.grouped_data:
@@ -112,9 +109,7 @@ class ModeData:
         # Config에 정의된 고유값 개수 사용
         mode_data.no_freq = len(config['freq'])  # 주파수의 개수
         mode_data.no_head = len(config['ha'])    # 헤드의 개수
-
         mode_data.list = data_list
-        
         return mode_data       
         
 # 요소정보 클래스
@@ -163,7 +158,7 @@ class StressResultLoader:
             with open(filename, 'r') as fp:
                 lines = fp.readlines()
         except FileNotFoundError:
-            print(f'{filename} 파일을 찾을 수 없습니다. ')
+            logging.error(f"P04: File not found: {filename}")
             return False
 
         for line in lines:
@@ -181,8 +176,7 @@ class StressResultLoader:
             for id in grid_ids:
                 f.write(f'GRID {id}\n')    
 
-        print(f'PRED 요소 : {len(elem_info.elem_id)}개가 PRED_ids.1에 저장되었습니다.')
-        print(f'PRED 노드 : {len(grid_ids)}개가 PRED_ids.1에 저장되었습니다.')
+        logging.info(f"P04: PRED elements: {len(elem_info.elem_id)}, PRED nodes: {len(grid_ids)} loaded.")
         return True  
         
     # bdf 읽어서 저장
@@ -192,7 +186,7 @@ class StressResultLoader:
             with open(filename, 'r') as fp:
                 lines = fp.readlines()
         except FileNotFoundError:
-            print(f'{filename} 파일을 찾을 수 없습니다. ')
+            logging.error(f"P04: File not found: {filename}")
             return False
 
         for line in lines:
@@ -205,7 +199,7 @@ class StressResultLoader:
             for elem_id, elem_type in elem_info:
                 f.write(f"{elem_type} {elem_id}\n")            
 
-        print(f'X DATA 요소 : {len(elem_info.elem_id)}개가 XDATA_ids.1에 저장되었습니다.')        
+        logging.info(f"P04: PRED elements: {len(elem_info.elem_id)}, PRED nodes: {len(grid_ids)} loaded.")      
         return True  
         
         
@@ -266,26 +260,21 @@ class StressResultLoader:
                         grid_z[i] = data_array[offset: offset + ngrid].reshape(ngrid)
                         offset += ngrid
 
-                    print(f'{filename_op1}파일 읽음. ')
+                    logging.info(f"P04: Loading data from cache: {filename_op1}")
             except :
-                print(f'{filename} 열기 실패')
+                logging.error(f"P04: Failed to read cache file {filename_op1}: {e}")
                 return None
 
         # op1파일 없음. op2 최초 읽기
         else:
             try:
                 start_time = time.time()
-                now = datetime.now()
-                formatted_time = now.strftime("%H:%M:%S")
-                print(f'op2 로딩 시작 {formatted_time}')
-
+                logging.info(f"P04: Cache not found. Loading OP2 file for the first time: {filename}")
                 op2 = read_op2(filename, build_dataframe=True, debug = False, log=None)
-
-                elapsed_time = time.time() - start_time    
-                print(f'op2 파일 로딩: {elapsed_time/60:.1f}분')
+                logging.info(f"P04: OP2 file loaded successfully in {time.time() - start_time:.2f} seconds.")
 
             except FileNotFoundError:
-                print(f'{filename} 열기 실패')
+                logging.error(f"P04: OP2 file not found: {filename}")
                 return None
 
             # subcase 및 요소수 
@@ -324,7 +313,7 @@ class StressResultLoader:
             }
 
             # 응력 데이터 저장하기 
-            print(filename_op1 + '  write')
+            logging.info(f"P04: Creating new cache file: {filename_op1}")
 
             cquad4_oxx_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
             cquad4_oyy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
@@ -386,7 +375,7 @@ class StressResultLoader:
             min_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.min_data]
             result_id = [(min_mode_ha_index[i]) * mode_data.no_freq + min_mode_freq_index[i] for i in range(len(min_mode_ha_index))]
         else:
-            print('Nothing')
+            logging.warning(f"P04: Unknown lc_name '{lc_name}' found. Skipping this case.")
 
         subcase_stress_all = []   
 
@@ -447,7 +436,7 @@ class StressResultLoader:
 
 
             subcase_stress_all.append(subcase_stress)
-        print(f'subcase_stress_all count: {len(subcase_stress_all)}')
+        logging.info(f"P04: Processed {len(subcase_stress_all)} subcases successfully.")
 
         return subcase_stress_all    
 
@@ -458,378 +447,378 @@ class StressResultLoader:
         except ValueError:
             return -1  # value가 config_list에 없는 경우 -1 반환 (예외 처리)
         
-    def read_op2_x_data(self, filename, lc_name, read_elem):
-        filename_xsn = filename[:-3] + 'xsn'
+#     def read_op2_x_data(self, filename, lc_name, read_elem):
+#         filename_xsn = filename[:-3] + 'xsn'
 
-        # xsn파일 존재
-        if os.path.isfile(filename_xsn):
+#         # xsn파일 존재
+#         if os.path.isfile(filename_xsn):
 
-            try:
-                with open(filename_xsn, 'rb') as f:
-                    data_to_load = pickle.load(f)
-                    nSubcases = data_to_load['nSubcases']
-                    ncquad4 = data_to_load['ncquad4']
-                    nctria3 = data_to_load['nctria3']
-                    cquad4_element_map = data_to_load['cquad4_element_map']
-                    ctria3_element_map = data_to_load['ctria3_element_map']
+#             try:
+#                 with open(filename_xsn, 'rb') as f:
+#                     data_to_load = pickle.load(f)
+#                     nSubcases = data_to_load['nSubcases']
+#                     ncquad4 = data_to_load['ncquad4']
+#                     nctria3 = data_to_load['nctria3']
+#                     cquad4_element_map = data_to_load['cquad4_element_map']
+#                     ctria3_element_map = data_to_load['ctria3_element_map']
 
-                    # 데이터 읽기
-                    data = f.read()
-                    #데이터 배열로 변환
-                    data_array = np.frombuffer(data, dtype = np.float32)
+#                     # 데이터 읽기
+#                     data = f.read()
+#                     #데이터 배열로 변환
+#                     data_array = np.frombuffer(data, dtype = np.float32)
 
-                    cquad4_oxx_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
+#                     cquad4_oxx_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
+# #                     cquad4_oyy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
+# #                     cquad4_txy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
+
+#                     ctria3_oxx_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
+# #                     ctria3_oyy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
+# #                     ctria3_txy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
+
+#                     offset = 0
+#                     for i in range(nSubcases):
+#                         cquad4_oxx_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
+#                         offset += ncquad4
+# #                         cquad4_oyy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
+# #                         offset += ncquad4
+# #                         cquad4_txy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
+# #                         offset += ncquad4
+
+#                         ctria3_oxx_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
+#                         offset += nctria3
+# #                         ctria3_oyy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
+# #                         offset += nctria3
+# #                         ctria3_txy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
+# #                         offset += nctria3
+
+#                     print(f'{filename_xsn}파일 읽음. ')
+#             except :
+#                 print(f'{filename} 열기 실패')
+#                 return None
+
+#         # xsn파일 없음. op2 최초 읽기
+#         else:
+#             try:
+#                 start_time = time.time()
+#                 now = datetime.now()
+#                 formatted_time = now.strftime("%H:%M:%S")
+#                 print(f'op2 로딩 시작 {formatted_time}')
+
+#                 op2 = read_op2(filename, build_dataframe=True, debug = False, log=None)
+
+#                 elapsed_time = time.time() - start_time    
+#                 print(f'op2 파일 로딩: {elapsed_time/60:.1f}분')
+
+#             except FileNotFoundError:
+#                 print(f'{filename} 열기 실패')
+#                 return None
+
+# #             # subcase 및 요소수 
+# #             if mode_data == 1:
+# #                 nSubcases = 1
+# #             else:
+#             nSubcases = len(op2.op2_results.stress.cquad4_stress)
+#             print(nSubcases)
+#             first_subcase_id = next(iter(op2.op2_results.stress.cquad4_stress))
+#             cquad4_element_map = {}
+#             ctria3_element_map = {}
+
+#             eids = op2.op2_results.stress.cquad4_stress[first_subcase_id].element_node[:,0]
+#             for idx, eid in enumerate(eids[1::2]):
+#                 cquad4_element_map[eid] = idx
+#             eids = op2.op2_results.stress.ctria3_stress[first_subcase_id].element_node[:,0]
+#             for idx, eid in enumerate(eids[1::2]):
+#                 ctria3_element_map[eid] = idx
+
+#             ncquad4 = len(cquad4_element_map)
+#             nctria3 = len(ctria3_element_map)
+
+#             data_to_save = {
+#                 'ncquad4': ncquad4,
+#                 'nctria3': nctria3,
+#                 'nSubcases': nSubcases,                
+#                 'cquad4_element_map': cquad4_element_map,
+#                 'ctria3_element_map': ctria3_element_map
+#             }
+
+#             # 응력 데이터 저장하기 
+#             print(filename_xsn + '  write')
+
+#             cquad4_oxx_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
+# #             cquad4_oyy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
+# #             cquad4_txy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
+
+#             ctria3_oxx_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
+# #             ctria3_oyy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
+# #             ctria3_txy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
+
+#             with open(filename_xsn, 'wb') as f:
+#                 # pickle 데이터 저장
+#                 pickle.dump(data_to_save,f)
+
+#                 for subcase_i in range(nSubcases):
+#                     subcase_id = subcase_i + 1
+
+#                     stress_data = op2.op2_results.stress.cquad4_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
+#                     cquad4_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
+# #                     cquad4_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
+# #                     cquad4_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
+
+#                     f.write(cquad4_oxx_mean[subcase_i].tobytes())
+# #                     f.write(cquad4_oyy_mean[subcase_i].tobytes())
+# #                     f.write(cquad4_txy_mean[subcase_i].tobytes())
+
+#                     stress_data = op2.op2_results.stress.ctria3_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
+#                     ctria3_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
+# #                     ctria3_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
+# #                     ctria3_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
+
+#                     f.write(ctria3_oxx_mean[subcase_i].tobytes())
+# #                     f.write(ctria3_oyy_mean[subcase_i].tobytes())
+# #                     f.write(ctria3_txy_mean[subcase_i].tobytes())
+
+# #         # 변환된 결과        
+# #         if mode_data == 1:        
+# #             result_id = [1]
+# #         elif lc_name =='full':
+# #             self.full_data = [item for item in mode_data.list if item.split('/')[3] == 'full']
+# #             full_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.full_data]
+# #             full_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.full_data]
+# #             result_id = [(full_mode_ha_index[i]) * mode_data.no_freq + full_mode_freq_index[i] for i in range(len(full_mode_ha_index))]           
+# #         elif lc_name =='min':
+# #             self.min_data = [item for item in mode_data.list if item.split('/')[3] == 'min']
+# #             min_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.min_data]
+# #             min_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.min_data]
+# #             result_id = [(min_mode_ha_index[i]) * mode_data.no_freq + min_mode_freq_index[i] for i in range(len(min_mode_ha_index))]
+# #         else:
+# #             print('Nothing')
+
+#         subcase_stress_all = []   
+
+#         for subcase_id in range(0,nSubcases):
+#             subcase_i = subcase_id -1
+#             ei = 0
+#             #subcase_stress = {'elem_all': [], 'map_elem':{}}
+#             subcase_stress = {
+#                 'elem_all': [], 
+#                 'map_elem':{}
+#                 }
+#             for elem_id, elem_type in read_elem:
+#                 try:
+#                     if elem_type == 'CQUAD4':
+#                         idx = cquad4_element_map[elem_id]
+#                         oxx = cquad4_oxx_mean[subcase_i][idx]
+# #                         oyy = cquad4_oyy_mean[subcase_i][idx]
+# #                         txy = cquad4_txy_mean[subcase_i][idx]                    
+#                     elif elem_type == 'CTRIA3':
+#                         idx = ctria3_element_map[elem_id]
+#                         oxx = ctria3_oxx_mean[subcase_i][idx]
+# #                         oyy = ctria3_oyy_mean[subcase_i][idx]
+# #                         txy = ctria3_txy_mean[subcase_i][idx]                    
+#                     else:
+#                         continue
+#                 except ValueError:
+#                     continue                    
+
+#                 subcase_stress['map_elem'][elem_id] = ei
+#                 ei += 1
+#                 elem_stress = {
+#                     'id' : elem_id,
+#                     'sxx' : oxx
+# #                     'syy' : oyy,
+# #                     'sxy' : txy
+#                 }
+#                 subcase_stress["elem_all"].append(elem_stress)
+            
+#             subcase_stress_all.append(subcase_stress)
+#         print(f'subcase_stress_all count: {len(subcase_stress_all)}')
+
+#         return subcase_stress_all         
+    
+#     def read_op2_ref_data(self, filename, lc_name, read_elem):
+#         filename_ref = filename[:-3] + 'ref'
+
+#         # ref파일 존재
+#         if os.path.isfile(filename_ref):
+
+#             try:
+#                 with open(filename_ref, 'rb') as f:
+#                     data_to_load = pickle.load(f)
+#                     nSubcases = data_to_load['nSubcases']
+#                     ncquad4 = data_to_load['ncquad4']
+#                     nctria3 = data_to_load['nctria3']
+#                     cquad4_element_map = data_to_load['cquad4_element_map']
+#                     ctria3_element_map = data_to_load['ctria3_element_map']
+
+#                     # 데이터 읽기
+#                     data = f.read()
+#                     #데이터 배열로 변환
+#                     data_array = np.frombuffer(data, dtype = np.float32)
+
+#                     cquad4_oxx_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
 #                     cquad4_oyy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
 #                     cquad4_txy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
 
-                    ctria3_oxx_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
+#                     ctria3_oxx_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
 #                     ctria3_oyy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
 #                     ctria3_txy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
 
-                    offset = 0
-                    for i in range(nSubcases):
-                        cquad4_oxx_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
-                        offset += ncquad4
+#                     offset = 0
+#                     for i in range(nSubcases):
+#                         cquad4_oxx_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
+#                         offset += ncquad4
 #                         cquad4_oyy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
 #                         offset += ncquad4
 #                         cquad4_txy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
 #                         offset += ncquad4
 
-                        ctria3_oxx_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
-                        offset += nctria3
+#                         ctria3_oxx_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
+#                         offset += nctria3
 #                         ctria3_oyy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
 #                         offset += nctria3
 #                         ctria3_txy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
 #                         offset += nctria3
 
-                    print(f'{filename_xsn}파일 읽음. ')
-            except :
-                print(f'{filename} 열기 실패')
-                return None
+#                     print(f'{filename_ref}파일 읽음. ')
+#             except :
+#                 print(f'{filename} 열기 실패')
+#                 return None
 
-        # xsn파일 없음. op2 최초 읽기
-        else:
-            try:
-                start_time = time.time()
-                now = datetime.now()
-                formatted_time = now.strftime("%H:%M:%S")
-                print(f'op2 로딩 시작 {formatted_time}')
+#         # ref파일 없음. op2 최초 읽기
+#         else:
+#             try:
+#                 start_time = time.time()
+#                 now = datetime.now()
+#                 formatted_time = now.strftime("%H:%M:%S")
+#                 print(f'op2 로딩 시작 {formatted_time}')
 
-                op2 = read_op2(filename, build_dataframe=True, debug = False, log=None)
+#                 op2 = read_op2(filename, build_dataframe=True, debug = False, log=None)
 
-                elapsed_time = time.time() - start_time    
-                print(f'op2 파일 로딩: {elapsed_time/60:.1f}분')
+#                 elapsed_time = time.time() - start_time    
+#                 print(f'op2 파일 로딩: {elapsed_time/60:.1f}분')
 
-            except FileNotFoundError:
-                print(f'{filename} 열기 실패')
-                return None
+#             except FileNotFoundError:
+#                 print(f'{filename} 열기 실패')
+#                 return None
 
-#             # subcase 및 요소수 
-#             if mode_data == 1:
-#                 nSubcases = 1
-#             else:
-            nSubcases = len(op2.op2_results.stress.cquad4_stress)
-            print(nSubcases)
-            first_subcase_id = next(iter(op2.op2_results.stress.cquad4_stress))
-            cquad4_element_map = {}
-            ctria3_element_map = {}
+# #             # subcase 및 요소수 
+# #             if mode_data == 1:
+# #                 nSubcases = 1
+# #             else:
+#             nSubcases = len(op2.op2_results.stress.cquad4_stress)
+#             print(nSubcases)
+#             first_subcase_id = next(iter(op2.op2_results.stress.cquad4_stress))
+#             cquad4_element_map = {}
+#             ctria3_element_map = {}
 
-            eids = op2.op2_results.stress.cquad4_stress[first_subcase_id].element_node[:,0]
-            for idx, eid in enumerate(eids[1::2]):
-                cquad4_element_map[eid] = idx
-            eids = op2.op2_results.stress.ctria3_stress[first_subcase_id].element_node[:,0]
-            for idx, eid in enumerate(eids[1::2]):
-                ctria3_element_map[eid] = idx
+#             eids = op2.op2_results.stress.cquad4_stress[first_subcase_id].element_node[:,0]
+#             for idx, eid in enumerate(eids[1::2]):
+#                 cquad4_element_map[eid] = idx
+#             eids = op2.op2_results.stress.ctria3_stress[first_subcase_id].element_node[:,0]
+#             for idx, eid in enumerate(eids[1::2]):
+#                 ctria3_element_map[eid] = idx
 
-            ncquad4 = len(cquad4_element_map)
-            nctria3 = len(ctria3_element_map)
+#             ncquad4 = len(cquad4_element_map)
+#             nctria3 = len(ctria3_element_map)
 
-            data_to_save = {
-                'ncquad4': ncquad4,
-                'nctria3': nctria3,
-                'nSubcases': nSubcases,                
-                'cquad4_element_map': cquad4_element_map,
-                'ctria3_element_map': ctria3_element_map
-            }
+#             data_to_save = {
+#                 'ncquad4': ncquad4,
+#                 'nctria3': nctria3,
+#                 'nSubcases': nSubcases,                
+#                 'cquad4_element_map': cquad4_element_map,
+#                 'ctria3_element_map': ctria3_element_map
+#             }
 
-            # 응력 데이터 저장하기 
-            print(filename_xsn + '  write')
+#             # 응력 데이터 저장하기 
+#             print(filename_ref + '  write')
 
-            cquad4_oxx_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
+#             cquad4_oxx_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
 #             cquad4_oyy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
 #             cquad4_txy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
 
-            ctria3_oxx_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
+#             ctria3_oxx_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
 #             ctria3_oyy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
 #             ctria3_txy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
 
-            with open(filename_xsn, 'wb') as f:
-                # pickle 데이터 저장
-                pickle.dump(data_to_save,f)
+#             with open(filename_ref, 'wb') as f:
+#                 # pickle 데이터 저장
+#                 pickle.dump(data_to_save,f)
 
-                for subcase_i in range(nSubcases):
-                    subcase_id = subcase_i + 1
+#                 for subcase_i in range(nSubcases):
+#                     subcase_id = subcase_i + 1
 
-                    stress_data = op2.op2_results.stress.cquad4_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
-                    cquad4_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
+#                     stress_data = op2.op2_results.stress.cquad4_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
+#                     cquad4_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
 #                     cquad4_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
 #                     cquad4_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
 
-                    f.write(cquad4_oxx_mean[subcase_i].tobytes())
+#                     f.write(cquad4_oxx_mean[subcase_i].tobytes())
 #                     f.write(cquad4_oyy_mean[subcase_i].tobytes())
 #                     f.write(cquad4_txy_mean[subcase_i].tobytes())
 
-                    stress_data = op2.op2_results.stress.ctria3_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
-                    ctria3_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
+#                     stress_data = op2.op2_results.stress.ctria3_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
+#                     ctria3_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
 #                     ctria3_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
 #                     ctria3_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
 
-                    f.write(ctria3_oxx_mean[subcase_i].tobytes())
+#                     f.write(ctria3_oxx_mean[subcase_i].tobytes())
 #                     f.write(ctria3_oyy_mean[subcase_i].tobytes())
 #                     f.write(ctria3_txy_mean[subcase_i].tobytes())
 
-#         # 변환된 결과        
-#         if mode_data == 1:        
-#             result_id = [1]
-#         elif lc_name =='full':
-#             self.full_data = [item for item in mode_data.list if item.split('/')[3] == 'full']
-#             full_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.full_data]
-#             full_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.full_data]
-#             result_id = [(full_mode_ha_index[i]) * mode_data.no_freq + full_mode_freq_index[i] for i in range(len(full_mode_ha_index))]           
-#         elif lc_name =='min':
-#             self.min_data = [item for item in mode_data.list if item.split('/')[3] == 'min']
-#             min_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.min_data]
-#             min_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.min_data]
-#             result_id = [(min_mode_ha_index[i]) * mode_data.no_freq + min_mode_freq_index[i] for i in range(len(min_mode_ha_index))]
-#         else:
-#             print('Nothing')
+# #         # 변환된 결과        
+# #         if mode_data == 1:        
+# #             result_id = [1]
+# #         elif lc_name =='full':
+# #             self.full_data = [item for item in mode_data.list if item.split('/')[3] == 'full']
+# #             full_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.full_data]
+# #             full_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.full_data]
+# #             result_id = [(full_mode_ha_index[i]) * mode_data.no_freq + full_mode_freq_index[i] for i in range(len(full_mode_ha_index))]           
+# #         elif lc_name =='min':
+# #             self.min_data = [item for item in mode_data.list if item.split('/')[3] == 'min']
+# #             min_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.min_data]
+# #             min_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.min_data]
+# #             result_id = [(min_mode_ha_index[i]) * mode_data.no_freq + min_mode_freq_index[i] for i in range(len(min_mode_ha_index))]
+# #         else:
+# #             print('Nothing')
 
-        subcase_stress_all = []   
+#         subcase_stress_all = []   
 
-        for subcase_id in range(0,nSubcases):
-            subcase_i = subcase_id -1
-            ei = 0
-            #subcase_stress = {'elem_all': [], 'map_elem':{}}
-            subcase_stress = {
-                'elem_all': [], 
-                'map_elem':{}
-                }
-            for elem_id, elem_type in read_elem:
-                try:
-                    if elem_type == 'CQUAD4':
-                        idx = cquad4_element_map[elem_id]
-                        oxx = cquad4_oxx_mean[subcase_i][idx]
+#         for subcase_id in range(0,nSubcases):
+#             subcase_i = subcase_id -1
+#             ei = 0
+#             #subcase_stress = {'elem_all': [], 'map_elem':{}}
+#             subcase_stress = {
+#                 'elem_all': [], 
+#                 'map_elem':{}
+#                 }
+#             for elem_id, elem_type in read_elem:
+#                 try:
+#                     if elem_type == 'CQUAD4':
+#                         idx = cquad4_element_map[elem_id]
+#                         oxx = cquad4_oxx_mean[subcase_i][idx]
 #                         oyy = cquad4_oyy_mean[subcase_i][idx]
 #                         txy = cquad4_txy_mean[subcase_i][idx]                    
-                    elif elem_type == 'CTRIA3':
-                        idx = ctria3_element_map[elem_id]
-                        oxx = ctria3_oxx_mean[subcase_i][idx]
+#                     elif elem_type == 'CTRIA3':
+#                         idx = ctria3_element_map[elem_id]
+#                         oxx = ctria3_oxx_mean[subcase_i][idx]
 #                         oyy = ctria3_oyy_mean[subcase_i][idx]
 #                         txy = ctria3_txy_mean[subcase_i][idx]                    
-                    else:
-                        continue
-                except ValueError:
-                    continue                    
+#                     else:
+#                         continue
+#                 except ValueError:
+#                     continue                    
 
-                subcase_stress['map_elem'][elem_id] = ei
-                ei += 1
-                elem_stress = {
-                    'id' : elem_id,
-                    'sxx' : oxx
+#                 subcase_stress['map_elem'][elem_id] = ei
+#                 ei += 1
+#                 elem_stress = {
+#                     'id' : elem_id,
+#                     'sxx' : oxx,
 #                     'syy' : oyy,
 #                     'sxy' : txy
-                }
-                subcase_stress["elem_all"].append(elem_stress)
+#                 }
+#                 subcase_stress["elem_all"].append(elem_stress)
             
-            subcase_stress_all.append(subcase_stress)
-        print(f'subcase_stress_all count: {len(subcase_stress_all)}')
+#             subcase_stress_all.append(subcase_stress)
+#         print(f'subcase_stress_all count: {len(subcase_stress_all)}')
 
-        return subcase_stress_all         
-    
-    def read_op2_ref_data(self, filename, lc_name, read_elem):
-        filename_ref = filename[:-3] + 'ref'
-
-        # ref파일 존재
-        if os.path.isfile(filename_ref):
-
-            try:
-                with open(filename_ref, 'rb') as f:
-                    data_to_load = pickle.load(f)
-                    nSubcases = data_to_load['nSubcases']
-                    ncquad4 = data_to_load['ncquad4']
-                    nctria3 = data_to_load['nctria3']
-                    cquad4_element_map = data_to_load['cquad4_element_map']
-                    ctria3_element_map = data_to_load['ctria3_element_map']
-
-                    # 데이터 읽기
-                    data = f.read()
-                    #데이터 배열로 변환
-                    data_array = np.frombuffer(data, dtype = np.float32)
-
-                    cquad4_oxx_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
-                    cquad4_oyy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
-                    cquad4_txy_mean = np.empty((nSubcases, ncquad4), dtype=np.float32)
-
-                    ctria3_oxx_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
-                    ctria3_oyy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
-                    ctria3_txy_mean = np.empty((nSubcases, nctria3), dtype=np.float32)
-
-                    offset = 0
-                    for i in range(nSubcases):
-                        cquad4_oxx_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
-                        offset += ncquad4
-                        cquad4_oyy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
-                        offset += ncquad4
-                        cquad4_txy_mean[i] = data_array[offset: offset + ncquad4].reshape(ncquad4)
-                        offset += ncquad4
-
-                        ctria3_oxx_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
-                        offset += nctria3
-                        ctria3_oyy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
-                        offset += nctria3
-                        ctria3_txy_mean[i] = data_array[offset: offset + nctria3].reshape(nctria3)
-                        offset += nctria3
-
-                    print(f'{filename_ref}파일 읽음. ')
-            except :
-                print(f'{filename} 열기 실패')
-                return None
-
-        # ref파일 없음. op2 최초 읽기
-        else:
-            try:
-                start_time = time.time()
-                now = datetime.now()
-                formatted_time = now.strftime("%H:%M:%S")
-                print(f'op2 로딩 시작 {formatted_time}')
-
-                op2 = read_op2(filename, build_dataframe=True, debug = False, log=None)
-
-                elapsed_time = time.time() - start_time    
-                print(f'op2 파일 로딩: {elapsed_time/60:.1f}분')
-
-            except FileNotFoundError:
-                print(f'{filename} 열기 실패')
-                return None
-
-#             # subcase 및 요소수 
-#             if mode_data == 1:
-#                 nSubcases = 1
-#             else:
-            nSubcases = len(op2.op2_results.stress.cquad4_stress)
-            print(nSubcases)
-            first_subcase_id = next(iter(op2.op2_results.stress.cquad4_stress))
-            cquad4_element_map = {}
-            ctria3_element_map = {}
-
-            eids = op2.op2_results.stress.cquad4_stress[first_subcase_id].element_node[:,0]
-            for idx, eid in enumerate(eids[1::2]):
-                cquad4_element_map[eid] = idx
-            eids = op2.op2_results.stress.ctria3_stress[first_subcase_id].element_node[:,0]
-            for idx, eid in enumerate(eids[1::2]):
-                ctria3_element_map[eid] = idx
-
-            ncquad4 = len(cquad4_element_map)
-            nctria3 = len(ctria3_element_map)
-
-            data_to_save = {
-                'ncquad4': ncquad4,
-                'nctria3': nctria3,
-                'nSubcases': nSubcases,                
-                'cquad4_element_map': cquad4_element_map,
-                'ctria3_element_map': ctria3_element_map
-            }
-
-            # 응력 데이터 저장하기 
-            print(filename_ref + '  write')
-
-            cquad4_oxx_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
-            cquad4_oyy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
-            cquad4_txy_mean = np.empty((nSubcases,ncquad4), dtype=np.float32)
-
-            ctria3_oxx_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
-            ctria3_oyy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
-            ctria3_txy_mean = np.empty((nSubcases,nctria3), dtype=np.float32)
-
-            with open(filename_ref, 'wb') as f:
-                # pickle 데이터 저장
-                pickle.dump(data_to_save,f)
-
-                for subcase_i in range(nSubcases):
-                    subcase_id = subcase_i + 1
-
-                    stress_data = op2.op2_results.stress.cquad4_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
-                    cquad4_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
-                    cquad4_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
-                    cquad4_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
-
-                    f.write(cquad4_oxx_mean[subcase_i].tobytes())
-                    f.write(cquad4_oyy_mean[subcase_i].tobytes())
-                    f.write(cquad4_txy_mean[subcase_i].tobytes())
-
-                    stress_data = op2.op2_results.stress.ctria3_stress[subcase_id].data_frame.to_numpy().astype(np.float32) #index(0),thick(1),xx(2),yy(3),xy(4)
-                    ctria3_oxx_mean[subcase_i] = 0.5*(stress_data[0::2,2] + stress_data[1::2,2])
-                    ctria3_oyy_mean[subcase_i] = 0.5*(stress_data[0::2,3] + stress_data[1::2,3])
-                    ctria3_txy_mean[subcase_i] = 0.5*(stress_data[0::2,4] + stress_data[1::2,4])
-
-                    f.write(ctria3_oxx_mean[subcase_i].tobytes())
-                    f.write(ctria3_oyy_mean[subcase_i].tobytes())
-                    f.write(ctria3_txy_mean[subcase_i].tobytes())
-
-#         # 변환된 결과        
-#         if mode_data == 1:        
-#             result_id = [1]
-#         elif lc_name =='full':
-#             self.full_data = [item for item in mode_data.list if item.split('/')[3] == 'full']
-#             full_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.full_data]
-#             full_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.full_data]
-#             result_id = [(full_mode_ha_index[i]) * mode_data.no_freq + full_mode_freq_index[i] for i in range(len(full_mode_ha_index))]           
-#         elif lc_name =='min':
-#             self.min_data = [item for item in mode_data.list if item.split('/')[3] == 'min']
-#             min_mode_ha_index = [self.convert_to_index(int(value.split('/')[0]), self.config['ha']) for value in self.min_data]
-#             min_mode_freq_index = [self.convert_to_index(float(value.split('/')[1]), self.config['freq']) for value in self.min_data]
-#             result_id = [(min_mode_ha_index[i]) * mode_data.no_freq + min_mode_freq_index[i] for i in range(len(min_mode_ha_index))]
-#         else:
-#             print('Nothing')
-
-        subcase_stress_all = []   
-
-        for subcase_id in range(0,nSubcases):
-            subcase_i = subcase_id -1
-            ei = 0
-            #subcase_stress = {'elem_all': [], 'map_elem':{}}
-            subcase_stress = {
-                'elem_all': [], 
-                'map_elem':{}
-                }
-            for elem_id, elem_type in read_elem:
-                try:
-                    if elem_type == 'CQUAD4':
-                        idx = cquad4_element_map[elem_id]
-                        oxx = cquad4_oxx_mean[subcase_i][idx]
-                        oyy = cquad4_oyy_mean[subcase_i][idx]
-                        txy = cquad4_txy_mean[subcase_i][idx]                    
-                    elif elem_type == 'CTRIA3':
-                        idx = ctria3_element_map[elem_id]
-                        oxx = ctria3_oxx_mean[subcase_i][idx]
-                        oyy = ctria3_oyy_mean[subcase_i][idx]
-                        txy = ctria3_txy_mean[subcase_i][idx]                    
-                    else:
-                        continue
-                except ValueError:
-                    continue                    
-
-                subcase_stress['map_elem'][elem_id] = ei
-                ei += 1
-                elem_stress = {
-                    'id' : elem_id,
-                    'sxx' : oxx,
-                    'syy' : oyy,
-                    'sxy' : txy
-                }
-                subcase_stress["elem_all"].append(elem_stress)
-            
-            subcase_stress_all.append(subcase_stress)
-        print(f'subcase_stress_all count: {len(subcase_stress_all)}')
-
-        return subcase_stress_all           
+#         return subcase_stress_all           

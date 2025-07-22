@@ -11,19 +11,24 @@ DBM (Deformation-Based Monitoring) 계산기 스크립트
 7.  (P07) 최종적으로 센서 데이터(X_MATRIX)로부터 전체 구조물의 응답(Y_MATRIX)을 예측하고 F06 형식 파일로 저장
 """
 
-# --- 1. 라이브러리 및 모듈 임포트 ---
-# 표준 라이브러리
+# --- 1. 표준 라이브러리 및 모듈 임포트 ---
 import os
 import time
 import logging
+
+# --- 로깅 설정 (가장 먼저 실행되도록 위로 이동) ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # 서드파티 라이브러리
 import numpy as np
 
 # 자체 모듈
 from module.p00_config import get_configuration
-from module.fun01_data_processing import arr_load, st_load, riTrans, loadTrans
-from module.fun02_file_io import save_data, load_data, load_hdf5_data, load_ref_data
+from module.fun02_file_io import save_data, load_data
 from module.p01 import HydrodynamicDataProcessor
 from module.p02 import ModeCalculator
 from module.p03 import FEModelLoader
@@ -31,32 +36,43 @@ from module.p04 import ModeData, ElementInfo, StressResultLoader
 from module.p05 import MatrixGenerator
 from module.p06 import MatrixSolver
 
-# 로깅 기본 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- 2. 헬퍼 함수 ---
+def log_execution_summary(config):
+    """스크립트 실행 전 주요 설정을 요약하여 로깅합니다."""
+    logging.info("=" * 60)
+    logging.info(f" DBM Prediction Start: {config['title']} ".center(60, "="))
+    logging.info("=" * 60)
+    
+    # 주요 실행 모드 요약 (0: NEW, 1: LOAD/ORG)
+    mode_flags = {
+        'Mode Data': 'new_mode_data',
+        'Result Data': 'new_result_data',
+        'OP2 Load': 'new_load_op2',
+        'Ref Data': 'new_ref_data',
+        'Sensor Data': 'new_sen_data'
+    }
+    
+    logging.info("Execution Mode Summary:")
+    for name, key in mode_flags.items():
+        status = 'LOAD (1)' if config.get(key, 0) else 'NEW (0)'
+        logging.info(f"  - {name:<15}: {status}")
+        
+    logging.info("-" * 60)
 
 if __name__ == "__main__":
     start_total_time = time.time()
     config = get_configuration()
-    New_mode_data = config['new_mode_data']
-    New_result_data = config['new_result_data']
-    New_load_OP2 = config['new_load_op2']      
-    New_ref_data = config['new_ref_data']
-    New_sen_data = config['new_sen_data']
-    load_cases = config['load_case']
-    title = config['title']
-    print(f'Title : DBM Pridection ({title})')
-    print("0 : NEW, 1 : ORG")
-    print('New_mode_data:', New_mode_data, 'New_load_OP2:', New_load_OP2, 'New_result_data:', New_result_data)    
-    print('New_ref_data',New_ref_data,'New_sen_data',New_sen_data)
-    
-    if New_mode_data == 0:
+
+    # 설정 요약 로깅 함수 호출
+    log_execution_summary(config)
+
+    if config['new_mode_data'] == 0:
         start_time = time.time()
         p01 = HydrodynamicDataProcessor(config)
         p01.process_files()
         freq, vbm_df, hbm_df, tm_df = p01.get_results()
-        logging.info("P01 Hydrodynamic Data Processing complete. Data is ready for further analysis.")        
-        elapsed_time = time.time() - start_time    
-        logging.info(f'P01 Hydro 파일 읽기 걸린 시간: {elapsed_time/60:.2f}분')
+        elapsed_time = time.time() - start_time
+        logging.info(f"P01: Hydrodynamic data processing complete. (took {elapsed_time:.2f} sec)")
         
         start_time = time.time()
         p02 = ModeCalculator(vbm_df, hbm_df, tm_df, config['nMode'])
@@ -68,28 +84,26 @@ if __name__ == "__main__":
             'selected_tm': selected_tm,
             'optimized_modes': optimized_modes
         }
-        save_data(variables_to_save, './Output/pkl/optimization_variables.pkl') 
-        logging.info("P02 Mode Calculating complete. Mode information is saved.")
+        save_data(variables_to_save, './Output/pkl/optimization_variables.pkl')         
         elapsed_time = time.time() - start_time    
-        logging.info(f'P02 모드 계산 걸린 시간: {elapsed_time/60:.2f}분')
+        logging.info(f"P02: Mode calculation complete. Mode information is saved. (took {elapsed_time:.2f} sec)")
         
-    elif New_mode_data == 1: 
+    elif config['new_mode_data'] == 1: 
+        logging.info("P01: Using existing data, skipping Hydrodynamic Data loading.")      
         start_time = time.time()
         loaded_variables = load_data('./Output/pkl/optimization_variables.pkl')
         selected_vbm = loaded_variables['selected_vbm']
         selected_hbm = loaded_variables['selected_hbm']
         selected_tm = loaded_variables['selected_tm']
-        optimized_modes = loaded_variables['optimized_modes']
-        logging.info("P02 Mode Calculating complete.")
+        optimized_modes = loaded_variables['optimized_modes']        
         elapsed_time = time.time() - start_time    
-        logging.info(f'P02 모드 정보 읽어오기 걸린 시간: {elapsed_time/60:.2f}분')
+        logging.info(f"P02: Existing mode data loaded. (took {elapsed_time:.2f} sec)")
     
     start_time = time.time()    
     p03 = FEModelLoader(config)
-    ElemNode_ref_df, ElemNode_sen_df, Elem_no, Elem_input_ref, Elem_input_sensor, Elem_ref_df, Node_input_ref = p03.load_fe_model_data() 
-    logging.info("P03 FE Model loaing complete.")     
-    elapsed_time = time.time() - start_time    
-    logging.info(f'P03 모델 정보 읽어오기 걸린 시간: {elapsed_time/60:.2f}분')
+    ElemNode_ref_df, ElemNode_sen_df, Elem_no, Elem_input_ref, Elem_input_sensor, Elem_ref_df, Node_input_ref = p03.load_fe_model_data()     
+    elapsed_time = time.time() - start_time        
+    logging.info(f"P03: FE Model loading complete. (took {elapsed_time:.2f} sec)")
      
     start_time = time.time()     
     p04= StressResultLoader(config)
@@ -101,10 +115,10 @@ if __name__ == "__main__":
     grid_ids = []
     PRED_file = config['filepaths']['ref_file']
     if p04.read_elem_file_pred(PRED_file, pred_data, grid_ids):
-        print("PRED 저장!")
+        logging.info("P04: PRED data loaded successfully.")
     else:
-        print('PRED파일이 없습니다.')
-        exit(0)
+        logging.error("P04: PRED file not found. Terminating process.")
+        exit(1) # 오류 종료 시에는 0이 아닌 값을 사용
         
     # Sensor Data 생성
     sens_data = ElementInfo()
@@ -120,19 +134,17 @@ if __name__ == "__main__":
     mode_stress_real_min = p04.read_op2_select(p04.filepaths['op2_real_template'].format('min'), 'min', mode_data, read_elem, grid_ids)
     mode_stress_imag_min = p04.read_op2_select(p04.filepaths['op2_imag_template'].format('min'), 'min', mode_data, read_elem, grid_ids)
     mode_stress_static_min = p04.read_op2_select(p04.filepaths['op2_static_template'].format('min'), 'min', 1, read_elem, grid_ids)
-    
-    logging.info("P04 Stress and displacement result loading complete.") 
+        
     elapsed_time = time.time() - start_time    
-    logging.info(f'P04 응력 정보 읽어오기 걸린 시간: {elapsed_time/60:.2f}분')
+    logging.info(f"P04: Stress result loading complete. (took {elapsed_time:.2f} sec)")
     
     start_time = time.time()    
     mode_list_all = ModeData.create_mode_data_from_list(optimized_modes, config)
     p05 = MatrixGenerator(mode_list_all, pred_data, grid_ids, sens_data, mode_stress_real_full, mode_stress_imag_full, mode_stress_static_full,
                                mode_stress_real_min, mode_stress_imag_min, mode_stress_static_min, config)
-    p05.generate_matrices()    
-    logging.info("P05 Stress maxrix gereration complete.")   
+    p05.generate_matrices()        
     elapsed_time = time.time() - start_time    
-    logging.info(f'P05 BM Matrix 구성하기 걸린 시간: {elapsed_time/60:.2f}분')    
+    logging.info(f"P05: Prediction Matrix generation complete. (took {elapsed_time:.2f} sec)")
     
     # pred_elem과 x_file, steps 준비
     pred_elem = list(zip(pred_data.elem_id, pred_data.elem_type))
@@ -172,19 +184,17 @@ if __name__ == "__main__":
     sol_t2 = p06.read_matrix_file("SOL_MATRIX_T2.2")
     sol_t3 = p06.read_matrix_file("SOL_MATRIX_T3.2")
 
-    print(f'센서 요소 수: {sol_xx.shape[1]}')
-    print(f'예측 요소 수: {sol_xx.shape[0]}')
-    print(f'예측 노드 수: {sol_t1.shape[0]}')
+    logging.info(f"P06: Matrix summary - Sensor elements: {sol_xx.shape[1]}, Prediction elements: {sol_xx.shape[0]}, Prediction nodes: {sol_t1.shape[0]}")
 
     # X_MATRIX.DAT 파일에서 스텝 수 계산
     x_file_path = 'X_MATRIX.DAT'
     with open(x_file_path, 'r') as f:
         steps = len(f.readlines()) - 1
-    logging.info(f"X_MATRIX 에서 {steps}개의 타임 스텝을 확인했습니다.")
+    logging.info(f"P06: Found {steps} time steps in '{x_file_path}'.")
 
     # 최종 F06 결과 파일 생성
     pred_elem = list(zip(pred_data.elem_id, pred_data.elem_type))
     p06.calculate_y_matrix(sol_xx, sol_yy, sol_xy, sol_t1, sol_t2, sol_t3)
-
-    logging.info(f"행렬 계산 및 F06 파일 생성 완료 ({time.time() - start_time:.2f}초)")    
-    logging.info(f"모든 작업이 완료되었습니다. 총 소요 시간: {time.time() - start_total_time:.2f}초")
+    
+    logging.info(f"P06: Matrix solving and F06 generation complete. (took {time.time() - start_time:.2f} sec)")
+    logging.info(f"All processes finished. Total elapsed time: {time.time() - start_total_time:.2f} sec")

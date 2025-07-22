@@ -11,7 +11,7 @@ import gc
 import os
 import pickle
 from module.p00_config import  get_configuration
-from module.fun01_data_processing import arr_load, st_load, riTrans, loadTrans
+from module.fun01_data_processing import arr_load, st_load, riTrans
 
 ## P01 유체동역학(ISTAS V2) 계산 데이터 처리
 class HydrodynamicDataProcessor:

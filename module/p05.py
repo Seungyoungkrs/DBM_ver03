@@ -191,11 +191,12 @@ class MatrixGenerator:
                 for f in file_handles:
                     f.close()
 
-            print(f'{output_filename} 파일 쓰기 끝')
+            logging.info(f"P05: Successfully created concatenated file: {output_filename}")
         except IOError as e:
-            print(f'파일 처리 중 오류 발생: {e}')
+            logging.error(f"P05:File processing error: {e}", exc_info=True)
         except ValueError as e:
-            print(e)
+            logging.error(f"P05:Data error during concatenation: {e}", exc_info=True)
+
 
     def generate_matrices(self):
         # 동적 행렬 생성 (Stress)
